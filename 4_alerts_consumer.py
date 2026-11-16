@@ -15,10 +15,10 @@ consumer = KafkaConsumer(
     sasl_plain_username=kafka_config['username'],
     sasl_plain_password=kafka_config['password'],
     value_deserializer=lambda v: json.loads(v.decode('utf-8')),
-    key_deserializer=lambda v: json.loads(v.decode('utf-8')) if v else None,
+    key_deserializer=lambda v: v.decode('utf-8') if v else None,
     auto_offset_reset='earliest',       # Зчитування повідомлень з початку
-    enable_auto_commit=True,            # Автоматичне підтвердження зчитаних повідомлень
-    group_id=f'{my_name}_alerts_viewer'
+    enable_auto_commit=False,           # Без збереження оффсетів:
+    group_id=None,                      # кожен запуск показує всі алерти з початку топіків
 )
 
 # Підписка на обидва топіки сповіщень
@@ -33,12 +33,14 @@ labels = {
 try:
     for msg in consumer:
         alert = msg.value
+        window = alert.get('window')
+        if not window:
+            continue  # старі повідомлення з hw-05 (інший формат) пропускаємо
         print(
-            f"[{labels.get(msg.topic, msg.topic)} ALERT] "
-            f"sensor={alert.get('sensor_id')} | "
-            f"time={alert.get('timestamp')} | "
-            f"t={alert.get('temperature')}°C, h={alert.get('humidity')}% | "
-            f"{alert.get('message')}"
+            f"[{labels.get(msg.topic, msg.topic)} ALERT {alert.get('code')}] "
+            f"window={window.get('start')} .. {window.get('end')} | "
+            f"t_avg={alert.get('t_avg', 0):.2f}°C, h_avg={alert.get('h_avg', 0):.2f}% | "
+            f"{alert.get('message')} | created={alert.get('timestamp')}"
         )
 except KeyboardInterrupt:
     print("\nStopped.")
